@@ -135,35 +135,59 @@ function Search-GPOForAuditSettings {
         [xml]$xmlReport = $gpoReport
         
         # Search for Advanced Audit Policy settings
-        $auditNodes = $xmlReport.SelectNodes("//q1:AdvancedAuditPolicyConfiguration/q1:AuditSetting", $xmlReport.DocumentElement.GetXmlNamespace())
+        $auditNodes = $xmlReport.SelectNodes("//*[local-name()='AuditSetting']")
         
         foreach ($node in $auditNodes) {
             $subcategory = $node.SubcategoryName
             $setting = $node.SettingValue
             
-            # Check if this subcategory is relevant to MDE auditing
-            foreach ($category in $AuditSettings.Keys) {
-                if ($AuditSettings[$category] -contains $subcategory) {
-                    $findings += [PSCustomObject]@{
-                        Type = "Advanced Audit Policy"
-                        Category = $category
-                        Setting = $subcategory
-                        Value = $setting
-                        Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Advanced Audit Policy Configuration\Audit Policies\$category"
+            if ($subcategory -and $setting) {
+                # Check if this subcategory is relevant to MDE auditing
+                foreach ($category in $AuditSettings.Keys) {
+                    if ($AuditSettings[$category] -contains $subcategory) {
+                        $findings += [PSCustomObject]@{
+                            Type = "Advanced Audit Policy"
+                            Category = $category
+                            Setting = $subcategory
+                            Value = $setting
+                            Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Advanced Audit Policy Configuration\Audit Policies\$category"
+                        }
+                        break
                     }
-                    break
                 }
             }
         }
         
-        # Search for Security Options
-        $securityNodes = $xmlReport.SelectNodes("//q1:SecurityOptions/q1:Display/q1:DisplayFields", $xmlReport.DocumentElement.GetXmlNamespace())
+        # Search for Security Options using multiple approaches
+        $securityNodes = $xmlReport.SelectNodes("//*[local-name()='SecurityOptions']//*[local-name()='Display']")
         
         foreach ($node in $securityNodes) {
-            $name = $node.Field1
-            $value = $node.Field2
+            $fields = $node.SelectNodes("*[local-name()='Field']")
+            if ($fields.Count -ge 2) {
+                $name = $fields[0].InnerText
+                $value = $fields[1].InnerText
+                
+                if ($SecurityOptions -contains $name) {
+                    $findings += [PSCustomObject]@{
+                        Type = "Security Option"
+                        Category = "Security Options"
+                        Setting = $name
+                        Value = $value
+                        Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Local Policies\Security Options"
+                    }
+                }
+            }
+        }
+        
+        # Alternative search for Security Options with different structure
+        $securityNodes2 = $xmlReport.SelectNodes("//*[local-name()='SecurityOption']")
+        
+        foreach ($node in $securityNodes2) {
+            $name = $node.KeyName
+            $value = $node.SettingNumber
+            if (-not $value) { $value = $node.SettingString }
             
-            if ($SecurityOptions -contains $name) {
+            if ($name -and $SecurityOptions -contains $name) {
                 $findings += [PSCustomObject]@{
                     Type = "Security Option"
                     Category = "Security Options"
@@ -175,17 +199,46 @@ function Search-GPOForAuditSettings {
         }
         
         # Search for Event Log settings
-        $eventLogNodes = $xmlReport.SelectNodes("//q1:EventLog/q1:*", $xmlReport.DocumentElement.GetXmlNamespace())
+        $eventLogNodes = $xmlReport.SelectNodes("//*[local-name()='EventLog']//*")
         
         foreach ($node in $eventLogNodes) {
             $settingName = $node.LocalName
-            if ($EventLogSettings -contains $settingName) {
+            $settingValue = $node.InnerText
+            
+            # Check for specific event log settings
+            $matchedSetting = $null
+            switch ($settingName) {
+                "MaximumLogSize" { $matchedSetting = "Maximum security log size" }
+                "RestrictGuestAccess" { $matchedSetting = "Prevent local guests group from accessing security log" }
+                "RetentionDays" { $matchedSetting = "Retain security log" }
+                "AuditLogRetentionPeriod" { $matchedSetting = "Security log retention method" }
+            }
+            
+            if ($matchedSetting -and $settingValue) {
                 $findings += [PSCustomObject]@{
                     Type = "Event Log Setting"
                     Category = "Event Log"
-                    Setting = $settingName
-                    Value = $node.InnerText
+                    Setting = $matchedSetting
+                    Value = $settingValue
                     Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Event Log"
+                }
+            }
+        }
+        
+        # Search for Audit Policy (legacy) settings
+        $auditPolicyNodes = $xmlReport.SelectNodes("//*[local-name()='AuditPolicy']")
+        
+        foreach ($node in $auditPolicyNodes) {
+            $policyName = $node.PolicyTarget
+            $policyValue = $node.SettingValue
+            
+            if ($policyName -and $policyValue) {
+                $findings += [PSCustomObject]@{
+                    Type = "Legacy Audit Policy"
+                    Category = "Audit Policy"
+                    Setting = $policyName
+                    Value = $policyValue
+                    Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Local Policies\Audit Policy"
                 }
             }
         }
