@@ -2,16 +2,20 @@
 
 <#
 .SYNOPSIS
-    Scans all Group Policy Objects in the current domain for MDE Auditing related settings.
+    Scans all Group Policy Objects in the current domain for Microsoft Defender Antivirus settings.
 
 .DESCRIPTION
-    This script examines all GPOs in the domain and identifies settings that affect
-    Microsoft Defender for Endpoint (MDE) auditing capabilities, including:
-    - Advanced Audit Policy settings
-    - Security Options related to auditing
-    - Event Log settings
-    - Process and object access auditing
-    - Network access auditing
+    This script examines all GPOs in the domain and identifies Microsoft Defender Antivirus
+    settings under Windows Components\Microsoft Defender Antivirus, including:
+    - Real-time Protection settings
+    - Scan configurations
+    - Cloud protection (MpEngine) settings
+    - Reporting and notification settings
+    - Quarantine settings
+    - Exclusions
+    - MAPS settings
+    - Network Inspection System settings
+    - Threat detection settings
 
 .NOTES
     Requires GroupPolicy PowerShell module and appropriate permissions to read GPOs.
@@ -21,98 +25,70 @@
 # Import required module
 Import-Module GroupPolicy -ErrorAction Stop
 
-# Define MDE auditing related settings to search for
-$AuditSettings = @{
-    # Advanced Audit Policy Categories
-    "Account Logon" = @(
-        "Audit Credential Validation",
-        "Audit Kerberos Authentication Service",
-        "Audit Kerberos Service Ticket Operations",
-        "Audit Other Account Logon Events"
+# Define Microsoft Defender Antivirus settings to search for
+$DefenderSettings = @{
+    "Real-time Protection" = @(
+        "Turn on behavior monitoring",
+        "Scan all downloaded files and attachments",
+        "Monitor file and program activity on your computer",
+        "Turn on real-time protection",
+        "Turn on process scanning whenever real-time protection is enabled",
+        "Turn on raw volume write notifications",
+        "Configure monitoring for incoming and outgoing file and program activity"
     )
-    "Account Management" = @(
-        "Audit Application Group Management",
-        "Audit Computer Account Management",
-        "Audit Distribution Group Management",
-        "Audit Other Account Management Events",
-        "Audit Security Group Management",
-        "Audit User Account Management"
+    "Scan" = @(
+        "Specify the maximum depth to scan archive files",
+        "Scan archive files",
+        "Scan packed executables",
+        "Scan removable drives",
+        "Turn on e-mail scanning",
+        "Scan mapped network drives",
+        "Run scheduled scan only when computer is on but not in use",
+        "Specify the day of the week to run a scheduled scan",
+        "Specify the time of day to run a scheduled scan",
+        "Specify the scan type to use for a scheduled scan",
+        "Specify the interval to run quick scans per day"
     )
-    "Detailed Tracking" = @(
-        "Audit DPAPI Activity",
-        "Audit Process Creation",
-        "Audit Process Termination",
-        "Audit RPC Events",
-        "Audit Token Right Adjusted Events"
+    "MpEngine" = @(
+        "Configure extended cloud check",
+        "Select cloud protection level",
+        "Configure cloud protection level",
+        "Configure timeout for cloud lookups",
+        "Turn on Microsoft Defender Antivirus cloud-delivered protection"
     )
-    "DS Access" = @(
-        "Audit Directory Service Access",
-        "Audit Directory Service Changes",
-        "Audit Directory Service Replication",
-        "Audit Detailed Directory Service Replication"
+    "Reporting" = @(
+        "Configure Watson events",
+        "Turn off enhanced notifications",
+        "Suppress all notifications",
+        "Configure notification timeout"
     )
-    "Logon/Logoff" = @(
-        "Audit Account Lockout",
-        "Audit Group Membership",
-        "Audit Logoff",
-        "Audit Logon",
-        "Audit Network Policy Server",
-        "Audit Other Logon/Logoff Events",
-        "Audit Special Logon",
-        "Audit User / Device Claims"
+    "Quarantine" = @(
+        "Configure removal of items from Quarantine folder",
+        "Configure local setting override for the removal of items from Quarantine folder"
     )
-    "Object Access" = @(
-        "Audit Application Generated",
-        "Audit Certification Services",
-        "Audit Detailed File Share",
-        "Audit File Share",
-        "Audit File System",
-        "Audit Filtering Platform Connection",
-        "Audit Filtering Platform Packet Drop",
-        "Audit Handle Manipulation",
-        "Audit Kernel Object",
-        "Audit Other Object Access Events",
-        "Audit Registry",
-        "Audit Removable Storage",
-        "Audit SAM",
-        "Audit Central Policy Staging"
+    "Exclusions" = @(
+        "Path Exclusions",
+        "Extension Exclusions", 
+        "Process Exclusions"
     )
-    "Policy Change" = @(
-        "Audit Audit Policy Change",
-        "Audit Authentication Policy Change",
-        "Audit Authorization Policy Change",
-        "Audit Filtering Platform Policy Change",
-        "Audit MPSSVC Rule-Level Policy Change",
-        "Audit Other Policy Change Events"
+    "MAPS" = @(
+        "Join Microsoft MAPS",
+        "Configure the 'Block at First Sight' feature",
+        "Send file samples when further analysis is required",
+        "Configure local setting override for reporting to Microsoft MAPS"
     )
-    "Privilege Use" = @(
-        "Audit Non Sensitive Privilege Use",
-        "Audit Other Privilege Use Events",
-        "Audit Sensitive Privilege Use"
+    "Network Inspection System" = @(
+        "Turn on definition retirement",
+        "Turn on protocol recognition",
+        "Specify additional definition sets for network traffic inspection"
     )
-    "System" = @(
-        "Audit IPsec Driver",
-        "Audit Other System Events",
-        "Audit Security State Change",
-        "Audit Security System Extension",
-        "Audit System Integrity"
+    "Threats" = @(
+        "Configure detection for potentially unwanted applications",
+        "Turn on e-mail scanning"
     )
 }
 
-# Security Options related to auditing
-$SecurityOptions = @(
-    "Audit: Audit the access of global system objects",
-    "Audit: Audit the use of Backup and Restore privilege",
-    "Audit: Force audit policy subcategory settings",
-    "Audit: Shut down system immediately if unable to log security audits"
-)
-
-# Event Log related settings
-$EventLogSettings = @(
-    "Maximum security log size",
-    "Retain security log",
-    "Security log retention method"
-)
+# Remove the Security Options and Event Log settings arrays since we're focusing on Defender settings
 
 function Write-ColorOutput {
     param(
@@ -134,111 +110,131 @@ function Search-GPOForAuditSettings {
         $gpoReport = Get-GPOReport -Guid $GPO.Id -ReportType Xml -ErrorAction Stop
         [xml]$xmlReport = $gpoReport
         
-        # Search for Advanced Audit Policy settings
-        $auditNodes = $xmlReport.SelectNodes("//*[local-name()='AuditSetting']")
+        # Search for Microsoft Defender Antivirus settings under Windows Components
+        $defenderNodes = $xmlReport.SelectNodes("//*[local-name()='Policy' and contains(@name,'Microsoft Defender Antivirus')]")
         
-        foreach ($node in $auditNodes) {
-            $subcategory = $node.SubcategoryName
-            $setting = $node.SettingValue
+        foreach ($node in $defenderNodes) {
+            $policyName = $node.name
+            $policyState = $node.state
+            $policyCategory = $node.category
             
-            if ($subcategory -and $setting) {
-                # Check if this subcategory is relevant to MDE auditing
-                foreach ($category in $AuditSettings.Keys) {
-                    if ($AuditSettings[$category] -contains $subcategory) {
-                        $findings += [PSCustomObject]@{
-                            Type = "Advanced Audit Policy"
-                            Category = $category
-                            Setting = $subcategory
-                            Value = $setting
-                            Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Advanced Audit Policy Configuration\Audit Policies\$category"
-                        }
+            if ($policyName -and $policyState) {
+                # Extract the subcategory from the policy name or category
+                $subcategory = "General"
+                
+                # Determine which Defender category this setting belongs to
+                foreach ($category in $DefenderSettings.Keys) {
+                    if ($DefenderSettings[$category] -contains $policyName) {
+                        $subcategory = $category
                         break
                     }
                 }
+                
+                # Check if category contains keywords to categorize settings
+                if ($policyCategory) {
+                    switch -Wildcard ($policyCategory) {
+                        "*Real-time Protection*" { $subcategory = "Real-time Protection" }
+                        "*Scan*" { $subcategory = "Scan" }
+                        "*MpEngine*" { $subcategory = "MpEngine" }
+                        "*Reporting*" { $subcategory = "Reporting" }
+                        "*Quarantine*" { $subcategory = "Quarantine" }
+                        "*Exclusions*" { $subcategory = "Exclusions" }
+                        "*MAPS*" { $subcategory = "MAPS" }
+                        "*Network Inspection*" { $subcategory = "Network Inspection System" }
+                        "*Threats*" { $subcategory = "Threats" }
+                    }
+                }
+                
+                # Get additional details like registry values
+                $registryValues = @()
+                $valueNodes = $node.SelectNodes(".//*[local-name()='RegistryValue']")
+                foreach ($valueNode in $valueNodes) {
+                    $regName = $valueNode.Name
+                    $regValue = $valueNode.Value
+                    $regType = $valueNode.Type
+                    if ($regName -and $regValue) {
+                        $registryValues += "$regName = $regValue ($regType)"
+                    }
+                }
+                
+                $findings += [PSCustomObject]@{
+                    Type = "Microsoft Defender Antivirus Policy"
+                    Category = $subcategory
+                    Setting = $policyName
+                    Value = $policyState
+                    RegistryDetails = ($registryValues -join "; ")
+                    Path = "Computer Configuration\Policies\Administrative Templates\Windows Components\Microsoft Defender Antivirus\$subcategory"
+                }
             }
         }
         
-        # Search for Security Options using multiple approaches
-        $securityNodes = $xmlReport.SelectNodes("//*[local-name()='SecurityOptions']//*[local-name()='Display']")
+        # Alternative search for Administrative Templates policies
+        $adminTemplateNodes = $xmlReport.SelectNodes("//*[local-name()='AdministrativeTemplate']")
         
-        foreach ($node in $securityNodes) {
-            $fields = $node.SelectNodes("*[local-name()='Field']")
-            if ($fields.Count -ge 2) {
-                $name = $fields[0].InnerText
-                $value = $fields[1].InnerText
+        foreach ($templateNode in $adminTemplateNodes) {
+            $policyNodes = $templateNode.SelectNodes(".//*[local-name()='Policy']")
+            
+            foreach ($policyNode in $policyNodes) {
+                $policyName = $policyNode.Name
+                $policyState = $policyNode.State
+                $policyCategory = $policyNode.Category
                 
-                if ($SecurityOptions -contains $name) {
+                # Check if this is a Microsoft Defender Antivirus policy
+                if ($policyCategory -and $policyCategory -match "Microsoft Defender Antivirus") {
+                    
+                    # Determine subcategory
+                    $subcategory = "General"
+                    foreach ($category in $DefenderSettings.Keys) {
+                        if ($DefenderSettings[$category] -contains $policyName) {
+                            $subcategory = $category
+                            break
+                        }
+                    }
+                    
+                    # Extract category from path if available
+                    if ($policyCategory -match "Microsoft Defender Antivirus\\(.+)") {
+                        $subcategory = $matches[1]
+                    }
+                    
                     $findings += [PSCustomObject]@{
-                        Type = "Security Option"
-                        Category = "Security Options"
-                        Setting = $name
-                        Value = $value
-                        Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Local Policies\Security Options"
+                        Type = "Microsoft Defender Antivirus Policy"
+                        Category = $subcategory
+                        Setting = $policyName
+                        Value = $policyState
+                        RegistryDetails = ""
+                        Path = "Computer Configuration\Policies\Administrative Templates\Windows Components\Microsoft Defender Antivirus\$subcategory"
                     }
                 }
             }
         }
         
-        # Alternative search for Security Options with different structure
-        $securityNodes2 = $xmlReport.SelectNodes("//*[local-name()='SecurityOption']")
+        # Search for any policy with "Defender" or "Antivirus" in the name
+        $allPolicyNodes = $xmlReport.SelectNodes("//*[local-name()='Policy']")
         
-        foreach ($node in $securityNodes2) {
-            $name = $node.KeyName
-            $value = $node.SettingNumber
-            if (-not $value) { $value = $node.SettingString }
+        foreach ($node in $allPolicyNodes) {
+            $policyName = $node.Name
+            $policyState = $node.State
+            $policyCategory = $node.Category
             
-            if ($name -and $SecurityOptions -contains $name) {
-                $findings += [PSCustomObject]@{
-                    Type = "Security Option"
-                    Category = "Security Options"
-                    Setting = $name
-                    Value = $value
-                    Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Local Policies\Security Options"
+            if ($policyName -and ($policyName -match "Defender|Antivirus|Windows Security")) {
+                
+                # Skip if we already found this policy
+                $alreadyFound = $findings | Where-Object { $_.Setting -eq $policyName }
+                if ($alreadyFound) { continue }
+                
+                $subcategory = "General"
+                if ($policyCategory) {
+                    $subcategory = $policyCategory -replace ".*Microsoft Defender Antivirus\\?", ""
+                    if (-not $subcategory) { $subcategory = "General" }
                 }
-            }
-        }
-        
-        # Search for Event Log settings
-        $eventLogNodes = $xmlReport.SelectNodes("//*[local-name()='EventLog']//*")
-        
-        foreach ($node in $eventLogNodes) {
-            $settingName = $node.LocalName
-            $settingValue = $node.InnerText
-            
-            # Check for specific event log settings
-            $matchedSetting = $null
-            switch ($settingName) {
-                "MaximumLogSize" { $matchedSetting = "Maximum security log size" }
-                "RestrictGuestAccess" { $matchedSetting = "Prevent local guests group from accessing security log" }
-                "RetentionDays" { $matchedSetting = "Retain security log" }
-                "AuditLogRetentionPeriod" { $matchedSetting = "Security log retention method" }
-            }
-            
-            if ($matchedSetting -and $settingValue) {
+                
                 $findings += [PSCustomObject]@{
-                    Type = "Event Log Setting"
-                    Category = "Event Log"
-                    Setting = $matchedSetting
-                    Value = $settingValue
-                    Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Event Log"
-                }
-            }
-        }
-        
-        # Search for Audit Policy (legacy) settings
-        $auditPolicyNodes = $xmlReport.SelectNodes("//*[local-name()='AuditPolicy']")
-        
-        foreach ($node in $auditPolicyNodes) {
-            $policyName = $node.PolicyTarget
-            $policyValue = $node.SettingValue
-            
-            if ($policyName -and $policyValue) {
-                $findings += [PSCustomObject]@{
-                    Type = "Legacy Audit Policy"
-                    Category = "Audit Policy"
+                    Type = "Microsoft Defender Antivirus Policy"
+                    Category = $subcategory
                     Setting = $policyName
-                    Value = $policyValue
-                    Path = "Computer Configuration\Policies\Windows Settings\Security Settings\Local Policies\Audit Policy"
+                    Value = $policyState
+                    RegistryDetails = ""
+                    Path = "Computer Configuration\Policies\Administrative Templates\Windows Components\Microsoft Defender Antivirus\$subcategory"
                 }
             }
         }
@@ -252,8 +248,8 @@ function Search-GPOForAuditSettings {
 }
 
 # Main execution
-Write-ColorOutput "=== MDE Auditing GPO Scanner ===" "Cyan"
-Write-ColorOutput "Scanning all GPOs in domain for MDE auditing related settings..." "Yellow"
+Write-ColorOutput "=== Microsoft Defender Antivirus GPO Scanner ===" "Cyan"
+Write-ColorOutput "Scanning all GPOs in domain for Microsoft Defender Antivirus settings..." "Yellow"
 Write-Host ""
 
 try {
@@ -300,8 +296,8 @@ try {
     # Summary
     Write-ColorOutput "`n=== SUMMARY ===" "Cyan"
     Write-ColorOutput "Total GPOs scanned: $($allGPOs.Count)" "Yellow"
-    Write-ColorOutput "GPOs with MDE auditing settings: $(($totalFindings | Select-Object -Unique GPOName).Count)" "Yellow"
-    Write-ColorOutput "Total MDE auditing settings found: $($totalFindings.Count)" "Yellow"
+    Write-ColorOutput "GPOs with Microsoft Defender Antivirus settings: $(($totalFindings | Select-Object -Unique GPOName).Count)" "Yellow"
+    Write-ColorOutput "Total Microsoft Defender Antivirus settings found: $($totalFindings.Count)" "Yellow"
     
     if ($totalFindings.Count -gt 0) {
         Write-Host "`nBreakdown by setting type:"
@@ -309,13 +305,18 @@ try {
             Write-ColorOutput "  $($_.Name): $($_.Count) settings" "White"
         }
         
+        Write-Host "`nBreakdown by category:"
+        $totalFindings | Group-Object Category | ForEach-Object {
+            Write-ColorOutput "  $($_.Name): $($_.Count) settings" "White"
+        }
+        
         # Export results to CSV
-        $csvPath = "MDE_Audit_GPO_Findings_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+        $csvPath = "Microsoft_Defender_GPO_Findings_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
         $totalFindings | Export-Csv -Path $csvPath -NoTypeInformation
         Write-ColorOutput "`nResults exported to: $csvPath" "Green"
     }
     else {
-        Write-ColorOutput "No MDE auditing related settings found in any GPO." "Yellow"
+        Write-ColorOutput "No Microsoft Defender Antivirus settings found in any GPO." "Yellow"
     }
 }
 catch {
